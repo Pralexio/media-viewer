@@ -1,0 +1,16 @@
+{
+  "name": "media-viewer",
+  "version": "1.0.0",
+  "description": "A beautiful and efficient media viewer for images and videos with advanced features",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Pralexio",
+  "license": "MIT",
+  "dependencies": {
+    "canvas": "^3.1.0",
+    "electron": "^28.1.0"
+  }
+}

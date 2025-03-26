@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Media Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Media Viewer</h1>
+            <div class="header-buttons">
+                <button onclick="showShortcuts()">Shortcuts</button>
+                <div class="folder-selector">
+                    <div class="current-folder" id="currentFolder">No folder selected</div>
+                    <button onclick="selectDirectory()">Select folder</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalFiles">0</div>
+                    <div class="stat-label">Total files</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="imageCount">0</div>
+                    <div class="stat-label">Images</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="videoCount">0</div>
+                    <div class="stat-label">Videos</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalSize">0 MB</div>
+                    <div class="stat-label">Total size</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-buttons">
+            <button onclick="filterMedia('all')" class="active">All</button>
+            <button onclick="filterMedia('image')">Images only</button>
+            <button onclick="filterMedia('video')">Videos only</button>
+        </div>
+
+        <div class="media-grid" id="mediaGrid"></div>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <div id="modalMedia"></div>
+            <div class="navigation-buttons">
+                <button onclick="previousMedia()">Previous</button>
+                <button onclick="nextMedia()">Next</button>
+            </div>
+            <div class="zoom-controls">
+                <button onclick="zoomIn()">+</button>
+                <button onclick="zoomOut()">-</button>
+                <button onclick="resetZoom()">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Loading...</div>
+
+    <div class="shortcuts-modal" id="shortcutsModal">
+        <div class="shortcuts-content">
+            <span class="close-shortcuts" onclick="hideShortcuts()">&times;</span>
+            <h2>Keyboard Shortcuts</h2>
+            <div class="shortcuts-grid">
+                <div class="shortcut-item">
+                    <div class="shortcut-key">Ctrl + Wheel</div>
+                    <div class="shortcut-description">Zoom in/out</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">+</div>
+                    <div class="shortcut-description">Zoom in</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">-</div>
+                    <div class="shortcut-description">Zoom out</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">0</div>
+                    <div class="shortcut-description">Reset zoom</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">Right click</div>
+                    <div class="shortcut-description">Pan image (when zoomed)</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">←</div>
+                    <div class="shortcut-description">Previous image</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">→</div>
+                    <div class="shortcut-description">Next image</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-key">Esc</div>
+                    <div class="shortcut-description">Close image</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        let currentFiles = [];
+        let currentIndex = 0;
+        let currentDirectory = '';
+        let currentFilter = 'all';
+        let currentZoom = 1;
+        let currentPan = { x: 0, y: 0 };
+        let isLoading = false;
+        let isDragging = false;
+        let startPan = { x: 0, y: 0 };
+
+        function createImageElement(src) {
+            const img = new Image();
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.src = src;
+            return img;
+        }
+
+        async function selectDirectory() {
+            showLoading();
+            const result = await ipcRenderer.invoke('select-directory');
+            if (result) {
+                currentDirectory = result.directory;
+                currentFiles = result.mediaFiles;
+                document.getElementById('currentFolder').textContent = currentDirectory;
+                updateStats();
+                await displayMedia();
+            }
+            hideLoading();
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            isLoading = true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+            isLoading = false;
+        }
+
+        function updateStats() {
+            const totalFiles = currentFiles.length;
+            const imageCount = currentFiles.filter(f => f.type === 'image').length;
+            const videoCount = currentFiles.filter(f => f.type === 'video').length;
+            const totalSize = currentFiles.reduce((sum, file) => sum + file.size, 0);
+
+            document.getElementById('totalFiles').textContent = totalFiles;
+            document.getElementById('imageCount').textContent = imageCount;
+            document.getElementById('videoCount').textContent = videoCount;
+            document.getElementById('totalSize').textContent = `${(totalSize / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        function filterMedia(type) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-buttons button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            displayMedia();
+        }
+
+        function displayMedia() {
+            const grid = document.getElementById('mediaGrid');
+            grid.innerHTML = '';
+
+            const filteredFiles = currentFiles.filter(file => {
+                if (currentFilter === 'all') return true;
+                return file.type === currentFilter;
+            });
+
+            filteredFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'media-item';
+                item.onclick = () => openModal(index);
+
+                if (file.type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = file.path;
+                    video.preload = 'metadata';
+                    item.appendChild(video);
+                    const playIcon = document.createElement('div');
+                    playIcon.className = 'play-icon';
+                    playIcon.innerHTML = '▶';
+                    item.appendChild(playIcon);
+                } else {
+                    const img = document.createElement('img');
+                    img.src = file.path;
+                    item.appendChild(img);
+                }
+
+                grid.appendChild(item);
+            });
+        }
+
+        function openModal(index) {
+            currentIndex = index;
+            const modal = document.getElementById('modal');
+            const modalMedia = document.getElementById('modalMedia');
+            modalMedia.innerHTML = '';
+            currentZoom = 1;
+            currentPan = { x: 0, y: 0 };
+
+            document.body.style.overflow = 'hidden';
+
+            const file = currentFiles[index];
+            if (file.type === 'video') {
+                const video = document.createElement('video');
+                video.src = file.path;
+                video.controls = true;
+                video.autoplay = true;
+                modalMedia.appendChild(video);
+            } else {
+                const img = document.createElement('img');
+                img.src = file.path;
+                modalMedia.appendChild(img);
+                setupImagePanning(img);
+            }
+
+            modal.style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        function previousMedia() {
+            currentIndex = (currentIndex - 1 + currentFiles.length) % currentFiles.length;
+            openModal(currentIndex);
+        }
+
+        function nextMedia() {
+            currentIndex = (currentIndex + 1) % currentFiles.length;
+            openModal(currentIndex);
+        }
+
+        function setupImagePanning(img) {
+            img.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+            });
+
+            img.addEventListener('mousedown', (e) => {
+                if (e.button === 2 && currentZoom > 1) {
+                    isDragging = true;
+                    img.classList.add('panning');
+                    startPan = {
+                        x: e.clientX - currentPan.x,
+                        y: e.clientY - currentPan.y
+                    };
+                }
+            });
+
+            img.addEventListener('mousemove', (e) => {
+                if (isDragging && currentZoom > 1) {
+                    currentPan = {
+                        x: e.clientX - startPan.x,
+                        y: e.clientY - startPan.y
+                    };
+                    updateImageTransform(img);
+                }
+            });
+
+            img.addEventListener('mouseup', (e) => {
+                if (e.button === 2) {
+                    isDragging = false;
+                    img.classList.remove('panning');
+                }
+            });
+
+            img.addEventListener('mouseleave', () => {
+                isDragging = false;
+                img.classList.remove('panning');
+            });
+        }
+
+        function updateImageTransform(img) {
+            img.style.transform = `translate(${currentPan.x}px, ${currentPan.y}px) scale(${currentZoom})`;
+        }
+
+        function zoomIn() {
+            currentZoom = Math.min(currentZoom + 0.1, 3);
+            updateImageTransform(document.querySelector('#modalMedia img'));
+        }
+
+        function zoomOut() {
+            currentZoom = Math.max(currentZoom - 0.1, 0.5);
+            updateImageTransform(document.querySelector('#modalMedia img'));
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            currentPan = { x: 0, y: 0 };
+            updateImageTransform(document.querySelector('#modalMedia img'));
+        }
+
+        document.getElementById('modal').addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const img = document.querySelector('#modalMedia img');
+                if (img) {
+                    if (e.deltaY < 0) {
+                        zoomIn();
+                    } else {
+                        zoomOut();
+                    }
+                }
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('modal').style.display === 'block') {
+                if (e.key === 'ArrowLeft') previousMedia();
+                if (e.key === 'ArrowRight') nextMedia();
+                if (e.key === 'Escape') closeModal();
+                if (e.key === '+' || e.key === '=') zoomIn();
+                if (e.key === '-') zoomOut();
+                if (e.key === '0') resetZoom();
+            }
+        });
+
+        function showShortcuts() {
+            document.getElementById('shortcutsModal').style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideShortcuts() {
+            document.getElementById('shortcutsModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (document.getElementById('shortcutsModal').style.display === 'block') {
+                    hideShortcuts();
+                } else if (document.getElementById('modal').style.display === 'block') {
+                    closeModal();
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
