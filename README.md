@@ -1,7 +1,7 @@
-# Media Viewer
+# Pralexio Media Browser
 
 <div align="center">
-  <img src="icon.png" alt="Media Viewer Icon" width="128" height="128">
+  <img src="icon.png" alt="Pralexio Media Browser Icon" width="128" height="128">
   <p>
     <strong>A beautiful and efficient media viewer for images and videos with advanced features</strong>
   </p>
@@ -42,8 +42,8 @@
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/pralexio/media-viewer.git
-cd media-viewer
+git clone https://github.com/yourusername/pralexio-media-browser.git
+cd pralexio-media-browser
 ```
 
 2. Install dependencies:
@@ -95,7 +95,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Author
 
-- **Pralexio** - [GitHub](https://github.com/pralexio)
+- **Pralexio** - [GitHub](https://github.com/yourusername)
 
 ---
 
